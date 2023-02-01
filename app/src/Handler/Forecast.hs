@@ -1,5 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Handler.Forecast where
 
@@ -8,14 +10,13 @@ import Web.Scotty (ActionM)
 import Control.Monad.Free (Free(..), liftF)
 import Handler (HandlerM)
 import Data.Aeson (ToJSON)
-import Web.Scotty qualified as Scotty 
+import qualified Web.Scotty as Scotty 
 
 data Effect next
   = SendGetForecastResponse GetForecastResponse next
   | CheckCache Float Float (Maybe () -> next)
   | QueryForecast Float Float (() -> next)
   | WriteCache Float Float () next
-  | Log String next
   deriving (Functor)
 
 perform :: (Free Effect) action -> ActionM action
@@ -32,9 +33,7 @@ perform (Free (QueryForecast lat lon next)) = do
 perform (Free (WriteCache lat lon forecast next)) = do
   putStrLn "Writing cache"
   perform next
-perform (Free (Log msg next)) = do
-  putStrLn msg
-  perform next
+
 
 sendGetForecastResponse :: GetForecastResponse -> Free Effect ()
 sendGetForecastResponse response = liftF $ SendGetForecastResponse response ()

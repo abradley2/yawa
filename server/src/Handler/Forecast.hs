@@ -56,9 +56,7 @@ getForecast = do
   case cacheHit of
     Just cacheValue -> do
       lift $ sendGetForecastResponse $ GetForecastResponse "Hello, from the handler!"
-      pure ()
     Nothing -> do
       forecast <- lift $ queryForecast 0 0
       lift $ writeCache 0 0 forecast
       lift $ sendGetForecastResponse $ GetForecastResponse "Hello, from the handler!"
-      pure ()

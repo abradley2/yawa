@@ -1,0 +1,9 @@
+{
+    "elm-codegen-version": "0.2.0",
+    "codegen-helpers": {
+        "packages": {
+            "abradley2/elm-i18next-gen": "2.0.2"
+        },
+        "local": []
+    }
+}

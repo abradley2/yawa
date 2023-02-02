@@ -1,10 +1,12 @@
 module Handler.Forecast (perform, Effect (..), getForecast, LatLon (..)) where
 
 import Control.Monad.Free (Free (..), liftF)
+import Control.Monad.Trans.Except (except)
 import Data.Aeson (FromJSON, ToJSON, (.:), (.=))
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy qualified as LBS
 import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text.Encoding
 import Database.Redis qualified as Redis
 import Handler (Env (..), HandlerM)
 import Network.HTTP.Simple qualified as HTTP
@@ -33,11 +35,32 @@ data Effect next
     = SendResponse Status LBS.ByteString next
     | CheckCache Env LatLon (Maybe LBS.ByteString -> next)
     | QueryForecast Env LatLon (LBS.ByteString -> next)
+    | QueryCity Env Text (Either String LatLon -> next)
     | WriteCache Env LatLon LBS.ByteString next
     deriving (Functor)
 
 perform :: (Free Effect) action -> ActionM action
 perform (Pure a) = pure a
+perform (Free (QueryCity env city next)) = do
+    result <-
+        runExceptT
+            ( do
+                let redisConn = env.redisConn
+                redisResult <-
+                    ExceptT . liftIO $
+                        Redis.runRedis redisConn $
+                            first show <$> Redis.get (Text.Encoding.encodeUtf8 city)
+
+                redisBS <-
+                    except $
+                        maybe (Left ("City not found" :: String)) Right redisResult
+
+                let parseLatLon :: ByteString -> Either String LatLon
+                    parseLatLon = Aeson.eitherDecodeStrict
+
+                except $ parseLatLon redisBS
+            )
+    perform $ next result
 perform (Free (SendResponse status response next)) = do
     Scotty.setHeader "Content-Type" "application/json"
     Scotty.status status
@@ -85,15 +108,25 @@ queryForecast env latLon = liftF $ QueryForecast env latLon id
 writeCache :: Env -> LatLon -> LBS.ByteString -> Free Effect ()
 writeCache env latLon forecast = liftF $ WriteCache env latLon forecast ()
 
-getForecast :: HandlerM Effect Text ()
-getForecast = do
-    let latLon = LatLon{lat = 0, lon = 0}
+queryCity :: Env -> Text -> Free Effect (Either String LatLon)
+queryCity env city = liftF $ QueryCity env city id
+
+getForecast :: Text -> HandlerM Effect Text ()
+getForecast city = do
     env <- ask
-    cacheHit <- lift $ checkCache env latLon
-    case cacheHit of
-        Just forecast -> do
-            lift $ sendResponse Status.status200 forecast
-        Nothing -> do
-            forecast <- lift $ queryForecast env latLon
-            lift $ writeCache env latLon forecast
-            lift $ sendResponse Status.status200 forecast
+    latLonResult <- lift $ queryCity env city
+    case latLonResult of
+        Right latLon -> do
+            cacheHit <- lift $ checkCache env latLon
+            case cacheHit of
+                Just forecast -> do
+                    lift $ sendResponse Status.status200 forecast
+                Nothing -> do
+                    forecast <- lift $ queryForecast env latLon
+                    lift $ writeCache env latLon forecast
+                    lift $ sendResponse Status.status200 forecast
+        Left err -> do
+            lift $
+                sendResponse
+                    Status.status404
+                    (LBS.fromStrict $ Text.Encoding.encodeUtf8 $ Text.pack err)

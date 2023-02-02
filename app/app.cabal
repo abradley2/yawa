@@ -52,6 +52,7 @@ library
     , relude
     , scotty
     , text
+    , transformers
     , wai
     , wai-middleware-static
     , warp
@@ -75,6 +76,7 @@ executable app-exe
     , relude
     , scotty
     , text
+    , transformers
     , wai
     , wai-middleware-static
     , warp
@@ -99,6 +101,7 @@ test-suite app-test
     , relude
     , scotty
     , text
+    , transformers
     , wai
     , wai-middleware-static
     , warp

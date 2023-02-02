@@ -32,6 +32,7 @@ dependencies:
 - wai
 - warp
 - wai-middleware-static
+- transformers
 
 ghc-options:
 - -Wall

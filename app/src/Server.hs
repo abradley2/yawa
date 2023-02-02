@@ -38,10 +38,11 @@ handler env = do
             Locations.getLocations
             Locations.perform
 
-    Scotty.get "/locations/:city/weather" $
+    Scotty.get "/locations/:city/weather" $ do
+        city <- Scotty.param "city"
         Handler.runHandler
             env
-            Forecast.getForecast
+            (Forecast.getForecast city)
             Forecast.perform
     pure ()
 

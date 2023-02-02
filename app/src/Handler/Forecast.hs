@@ -4,6 +4,7 @@ import Control.Monad.Free (Free (..), liftF)
 import Data.Aeson (FromJSON, ToJSON, (.:), (.=))
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy qualified as LBS
+import Data.Text qualified as Text
 import Database.Redis qualified as Redis
 import Handler (Env (..), HandlerM)
 import Network.HTTP.Simple qualified as HTTP
@@ -60,7 +61,7 @@ perform (Free (QueryForecast env latLon next)) = do
                 , "&lon="
                 , show latLon.lon
                 , "&appid="
-                , "316ee27609c090ca70313f1d9eae61cd" -- Text.unpack env.apiKey
+                , Text.unpack env.apiKey
                 ]
             )
     res <- HTTP.httpLBS req

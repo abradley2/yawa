@@ -11,5 +11,14 @@ perform effect =
         Main.EffectNone ->
             SimulatedEffect.Cmd.none
 
+        Main.EffectFetchLocations ->
+            SimulatedEffect.Cmd.none
+
         Main.EffectSearch _ ->
+            SimulatedEffect.Cmd.none
+
+        Main.EffectReplaceUrl _ ->
+            SimulatedEffect.Cmd.none
+
+        Main.EffectBatch _ ->
             SimulatedEffect.Cmd.none

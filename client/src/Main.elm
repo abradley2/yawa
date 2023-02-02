@@ -1,7 +1,10 @@
 port module Main exposing (Effect(..), Flags, Model, Msg, Query, init, main, update, view)
 
 import Browser
+import Css
 import Html.Styled as Html exposing (Html)
+import Html.Styled.Attributes as Attr
+import Html.Styled.Events as Events
 import Http
 import Json.Decode as Decode exposing (Decoder, Value)
 import Maybe.Extra as MaybeX
@@ -15,7 +18,13 @@ import Url.Parser.Query
 
 type Effect
     = EffectNone
+    | EffectBatch (List Effect)
+    | EffectFetchLocations
     | EffectSearch Query
+    | EffectReplaceUrl String
+
+
+port replaceUrl : String -> Cmd msg
 
 
 perform : Effect -> Cmd Msg
@@ -24,28 +33,51 @@ perform effect =
         EffectNone ->
             Cmd.none
 
+        EffectReplaceUrl url ->
+            replaceUrl url
+
+        EffectBatch [] ->
+            Cmd.none
+
+        EffectBatch (eff :: next) ->
+            Cmd.batch (perform eff :: List.map perform next)
+
+        EffectFetchLocations ->
+            Http.request
+                { method = "GET"
+                , body = Http.emptyBody
+                , expect =
+                    Http.expectJson
+                        ReceivedLocationsResponse
+                        (Decode.list Decode.string)
+                , timeout = Nothing
+                , headers = []
+                , tracker = Nothing
+                , url = Url.Builder.absolute [ "locations" ] []
+                }
+
         EffectSearch (QueryCity city) ->
             Http.request
                 { method = "GET"
                 , body = Http.emptyBody
-                , expect = Http.expectWhatever ReceivedSearchResponse
+                , expect = Http.expectWhatever ReceivedForecastResponse
                 , timeout = Nothing
                 , headers = []
                 , tracker = Nothing
-                , url = Url.Builder.absolute [ "search" ] [ Url.Builder.string "city" city ]
+                , url = Url.Builder.absolute [ "locations", city, "weather" ] []
                 }
 
         EffectSearch (QueryLatLng lat lng) ->
             Http.request
                 { method = "GET"
                 , body = Http.emptyBody
-                , expect = Http.expectWhatever ReceivedSearchResponse
+                , expect = Http.expectWhatever ReceivedForecastResponse
                 , timeout = Nothing
                 , headers = []
                 , tracker = Nothing
                 , url =
                     Url.Builder.absolute
-                        [ "search" ]
+                        [ "weather" ]
                         [ Url.Builder.string "lat" (String.fromFloat lat)
                         , Url.Builder.string "lng" (String.fromFloat lng)
                         ]
@@ -84,13 +116,17 @@ type alias Flags =
 
 
 type alias Model =
-    { query : Maybe Query
-    , searchResults : WebData ()
+    { flags : Flags
+    , query : Maybe Query
+    , locationsResponse : WebData (List String)
+    , forecastResponse : WebData ()
     }
 
 
 type Msg
-    = ReceivedSearchResponse (Result Http.Error ())
+    = ReceivedForecastResponse (Result Http.Error ())
+    | ReceivedLocationsResponse (Result Http.Error (List String))
+    | LocationClicked String
 
 
 flagsDecoder : Decoder Flags
@@ -114,9 +150,59 @@ urlDecoder =
             )
 
 
+loadingView : Html Msg
+loadingView =
+    Html.text "Loading..."
+
+
+readyView : List String -> Model -> Html Msg
+readyView locations model =
+    Html.div
+        []
+        [ Html.div
+            [ Attr.css
+                [ Css.displayFlex
+                , Css.flexDirection Css.column
+                ]
+            ]
+          <|
+            List.map locationLink locations
+        ]
+
+
+errorView : Http.Error -> Html Msg
+errorView =
+    always <|
+        Html.div
+            []
+            [ Html.text "There was an application error" ]
+
+
+locationLink : String -> Html Msg
+locationLink location =
+    Html.a
+        [ Attr.href <| "?city=" ++ location
+        , Events.preventDefaultOn
+            "click"
+            (Decode.succeed ( LocationClicked location, True ))
+        ]
+        [ Html.text location ]
+
+
 view : Model -> Html Msg
-view _ =
-    Html.text "Hello World"
+view model =
+    case model.locationsResponse of
+        Loading ->
+            loadingView
+
+        Success locations ->
+            readyView locations model
+
+        Failure err ->
+            errorView err
+
+        NotAsked ->
+            Html.text "There was a fatal application error, oh no"
 
 
 init : Flags -> ( Model, Effect )
@@ -126,33 +212,65 @@ init flags =
         query =
             MaybeX.join (Url.Parser.parse queryParser flags.url)
     in
-    ( { query = query
-      , searchResults =
+    ( { flags = flags
+      , query = query
+      , locationsResponse = Loading
+      , forecastResponse =
             if MaybeX.isJust query then
                 Loading
 
             else
                 NotAsked
       }
-    , case query of
-        Just searchParams ->
-            EffectSearch searchParams
+    , EffectBatch
+        [ case query of
+            Just searchParams ->
+                EffectSearch searchParams
 
-        Nothing ->
-            EffectNone
+            Nothing ->
+                EffectNone
+        , EffectFetchLocations
+        ]
     )
 
 
 update : Msg -> Model -> ( Model, Effect )
 update msg model =
     case msg of
-        ReceivedSearchResponse (Ok res) ->
-            ( { model | searchResults = Success res }
+        LocationClicked city ->
+            let
+                url =
+                    model.flags.url
+
+                nextUrl =
+                    { url
+                        | query = Just <| "city=" ++ city
+                    }
+            in
+            ( { model | forecastResponse = Loading }
+            , EffectBatch
+                [ EffectSearch (QueryCity city)
+                , EffectReplaceUrl (Url.toString nextUrl)
+                ]
+            )
+
+        ReceivedForecastResponse (Ok res) ->
+            ( { model | forecastResponse = Success res }
             , EffectNone
             )
 
-        ReceivedSearchResponse (Err err) ->
-            ( { model | searchResults = Failure err }
+        ReceivedForecastResponse (Err err) ->
+            ( { model | forecastResponse = Failure err }
+            , EffectNone
+            )
+
+        ReceivedLocationsResponse (Ok locations) ->
+            ( { model | locationsResponse = Success locations }
+            , EffectNone
+            )
+
+        ReceivedLocationsResponse (Err err) ->
+            ( { model | locationsResponse = Failure err }
             , EffectNone
             )
 

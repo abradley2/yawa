@@ -18,6 +18,10 @@
             }
         })
 
+        app.ports.replaceUrl.subscribe(function (url) {
+            window.history.replaceState(null, document.title, url)
+        })
+
         app.ports.logError.subscribe(function (error) {
             console.error(error)
         })

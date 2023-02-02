@@ -1,4 +1,4 @@
-module Lib (server) where
+module Server (server) where
 
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy qualified as LBS
@@ -8,6 +8,7 @@ import Database.Redis qualified as Redis
 import Handler (Env (..))
 import Handler qualified
 import Handler.Forecast qualified as Forecast
+import Handler.Locations qualified as Locations
 import Relude
 import System.Environment qualified as Environment
 import Web.Scotty (ScottyM)
@@ -15,7 +16,13 @@ import Web.Scotty qualified as Scotty
 
 handler :: Env -> ScottyM ()
 handler env = do
-    Scotty.get "/forecast" $
+    Scotty.get "/locations" $
+        Handler.runHandler
+            env
+            Locations.getLocations
+            Locations.perform
+
+    Scotty.get "/locations/:city/weather" $
         Handler.runHandler
             env
             Forecast.getForecast

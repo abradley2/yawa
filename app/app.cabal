@@ -27,7 +27,8 @@ library
   exposed-modules:
       Handler
       Handler.Forecast
-      Lib
+      Handler.Locations
+      Server
   other-modules:
       Paths_app
   hs-source-dirs:

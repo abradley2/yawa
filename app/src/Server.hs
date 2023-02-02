@@ -9,8 +9,7 @@ import Handler (Env (..))
 import Handler qualified
 import Handler.Forecast qualified as Forecast
 import Handler.Locations qualified as Locations
-import Network.Wai (Application, Middleware)
-import Network.Wai.Handler.Warp (run)
+import Network.Wai (Middleware)
 import Network.Wai.Middleware.Static (Policy)
 import Network.Wai.Middleware.Static qualified as Static
 import Relude

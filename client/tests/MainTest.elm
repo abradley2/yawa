@@ -34,7 +34,7 @@ suite =
             \_ ->
                 testWithUrl "http://localhost:1234?city=stamford"
                     (ProgramTest.expectViewHas
-                        [ Selector.text "Hello World"
+                        [ Selector.text "Loading"
                         ]
                     )
         ]

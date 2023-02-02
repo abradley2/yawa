@@ -27,10 +27,10 @@ theme =
     , bodySecondaryForeground = Css.hex "#4a5b6c"
     , bodyForegroundBorder = Css.hex "#5a6c7e"
     , bodySecondaryForegroundBorder = Css.hex "#6a7d90"
-    , bodyFont = Css.hex "#7a8ea2"
+    , bodyFont = Css.hex "#ffffff"
     , bodyForegroundFont = Css.hex "#8a9fb4"
     , bodySecondaryForegroundFont = Css.hex "#d0d9e1"
-    , primaryActionBackground = Css.hex "#1e88e5"
+    , primaryActionBackground = Css.hex "#add8ff"
     , primaryActionFont = Css.hex "#ffffff"
     , widgetFocusOutline = Css.hex "#f5f7fa"
     }

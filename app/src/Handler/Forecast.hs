@@ -85,6 +85,7 @@ perform (Free (QueryForecast env latLon next)) = do
                 , show latLon.lon
                 , "&appid="
                 , Text.unpack env.apiKey
+                , "&units=imperial"
                 ]
             )
     res <- HTTP.httpLBS req

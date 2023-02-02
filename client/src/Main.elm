@@ -24,10 +24,26 @@ type alias WeatherAttribute =
     }
 
 
+weatherAttributeDecoder : Decoder WeatherAttribute
+weatherAttributeDecoder =
+    Decode.map2
+        WeatherAttribute
+        (Decode.field "main" Decode.string)
+        (Decode.field "description" Decode.string)
+
+
 type alias ForecastResponse =
     { weatherAttributes : List WeatherAttribute
     , temperature : Float
     }
+
+
+forecastResponseDecoder : Decoder ForecastResponse
+forecastResponseDecoder =
+    Decode.map2
+        ForecastResponse
+        (Decode.at [ "current", "weather" ] (Decode.list weatherAttributeDecoder))
+        (Decode.at [ "current", "temp" ] Decode.float)
 
 
 type Effect
@@ -74,7 +90,7 @@ perform effect =
             Http.request
                 { method = "GET"
                 , body = Http.emptyBody
-                , expect = Http.expectWhatever ReceivedForecastResponse
+                , expect = Http.expectJson (ReceivedForecastResponse (QueryCity city)) forecastResponseDecoder
                 , timeout = Nothing
                 , headers = []
                 , tracker = Nothing
@@ -85,7 +101,7 @@ perform effect =
             Http.request
                 { method = "GET"
                 , body = Http.emptyBody
-                , expect = Http.expectWhatever ReceivedForecastResponse
+                , expect = Http.expectJson (ReceivedForecastResponse (QueryLatLng lat lng)) forecastResponseDecoder
                 , timeout = Nothing
                 , headers = []
                 , tracker = Nothing
@@ -133,13 +149,13 @@ type alias Model =
     { flags : Flags
     , query : Maybe Query
     , locationsResponse : WebData (List String)
-    , forecastResponse : WebData ()
+    , forecastResponse : WebData ( String, ForecastResponse )
     , filter : String
     }
 
 
 type Msg
-    = ReceivedForecastResponse (Result Http.Error ())
+    = ReceivedForecastResponse Query (Result Http.Error ForecastResponse)
     | ReceivedLocationsResponse (Result Http.Error (List String))
     | FilterChanged String
     | LocationClicked String
@@ -172,7 +188,7 @@ cardView =
         >> Html.div
             [ Attr.css
                 [ Css.backgroundColor theme.bodyForeground
-                , Css.color theme.bodyForeground
+                , Css.color theme.bodyFont
                 , Css.padding (Css.px 20)
                 , Css.borderRadius (Css.px 10)
                 , Css.margin2 (Css.px 20) (Css.px 0)
@@ -232,8 +248,31 @@ weatherView model =
         Failure error ->
             errorView error
 
-        Success () ->
-            Html.text "Weather"
+        Success ( location, forecast ) ->
+            Html.div
+                []
+                [ Html.div
+                    [ Attr.css
+                        [ Css.color theme.primaryActionBackground
+                        , Css.fontSize (Css.px 20)
+                        ]
+                    ]
+                    [ Html.text <| "Temperature in " ++ location ]
+                , Html.hr [] []
+                , Html.text <| String.fromFloat forecast.temperature ++ "°F"
+                , Html.hr [] []
+                , Html.div
+                    []
+                    (List.map
+                        (\attr ->
+                            Html.div
+                                []
+                                [ Html.text <| attr.main ++ ": " ++ attr.description
+                                ]
+                        )
+                        forecast.weatherAttributes
+                    )
+                ]
 
         NotAsked ->
             Html.text "No Location Selected"
@@ -354,12 +393,23 @@ update msg model =
                 ]
             )
 
-        ReceivedForecastResponse (Ok res) ->
-            ( { model | forecastResponse = Success res }
+        ReceivedForecastResponse query (Ok res) ->
+            ( { model
+                | forecastResponse =
+                    Success
+                        ( case query of
+                            QueryCity city ->
+                                city
+
+                            QueryLatLng lat lon ->
+                                String.fromFloat lat ++ ", " ++ String.fromFloat lon
+                        , res
+                        )
+              }
             , EffectNone
             )
 
-        ReceivedForecastResponse (Err err) ->
+        ReceivedForecastResponse _ (Err err) ->
             ( { model | forecastResponse = Failure err }
             , EffectNone
             )

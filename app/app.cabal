@@ -32,13 +32,24 @@ library
       Paths_app
   hs-source-dirs:
       src
+  default-extensions:
+      ImportQualifiedPost
+      OverloadedStrings
+      NoImplicitPrelude
+      DeriveFunctor
+      OverloadedRecordDot
+      DuplicateRecordFields
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       aeson
     , base >=4.7 && <5
     , free
+    , hedis
+    , http-conduit
+    , http-types
     , relude
     , scotty
+    , text
   default-language: Haskell2010
 
 executable app-exe
@@ -53,8 +64,12 @@ executable app-exe
     , app
     , base >=4.7 && <5
     , free
+    , hedis
+    , http-conduit
+    , http-types
     , relude
     , scotty
+    , text
   default-language: Haskell2010
 
 test-suite app-test
@@ -70,6 +85,10 @@ test-suite app-test
     , app
     , base >=4.7 && <5
     , free
+    , hedis
+    , http-conduit
+    , http-types
     , relude
     , scotty
+    , text
   default-language: Haskell2010

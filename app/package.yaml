@@ -25,6 +25,10 @@ dependencies:
 - scotty
 - aeson
 - free
+- http-types
+- hedis
+- http-conduit
+- text
 
 ghc-options:
 - -Wall
@@ -39,6 +43,13 @@ ghc-options:
 
 library:
   source-dirs: src
+  default-extensions:
+  - ImportQualifiedPost
+  - OverloadedStrings
+  - NoImplicitPrelude
+  - DeriveFunctor
+  - OverloadedRecordDot
+  - DuplicateRecordFields
 
 executables:
   app-exe:

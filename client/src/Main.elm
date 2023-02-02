@@ -6,12 +6,15 @@ import Html.Styled as Html exposing (Html)
 import Html.Styled.Attributes as Attr
 import Html.Styled.Events as Events
 import Http
+import I18Next exposing (Translations)
 import Json.Decode as Decode exposing (Decoder, Value)
+import Language
 import Maybe.Extra as MaybeX
 import RemoteData exposing (RemoteData(..), WebData)
 import Result.Extra as ResultX
 import TextInput
 import Theme exposing (theme)
+import Translations
 import Url exposing (Url)
 import Url.Builder
 import Url.Parser exposing (Parser)
@@ -151,6 +154,7 @@ type alias Model =
     , locationsResponse : WebData (List String)
     , forecastResponse : WebData ( String, ForecastResponse )
     , filter : String
+    , lang : List Translations
     }
 
 
@@ -257,7 +261,11 @@ weatherView model =
                         , Css.fontSize (Css.px 20)
                         ]
                     ]
-                    [ Html.text <| "Temperature in " ++ location ]
+                    [ Html.text <|
+                        Translations.temperatureDescription
+                            model.lang
+                            { location = location }
+                    ]
                 , Html.hr [] []
                 , Html.text <| String.fromFloat forecast.temperature ++ "°F"
                 , Html.hr [] []
@@ -346,6 +354,7 @@ init flags =
     ( { flags = flags
       , query = query
       , filter = ""
+      , lang = [ Language.defaultLanguage ]
       , locationsResponse = Loading
       , forecastResponse =
             if MaybeX.isJust query then

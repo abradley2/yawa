@@ -10,10 +10,24 @@ import Json.Decode as Decode exposing (Decoder, Value)
 import Maybe.Extra as MaybeX
 import RemoteData exposing (RemoteData(..), WebData)
 import Result.Extra as ResultX
+import TextInput
+import Theme exposing (theme)
 import Url exposing (Url)
 import Url.Builder
 import Url.Parser exposing (Parser)
 import Url.Parser.Query
+
+
+type alias WeatherAttribute =
+    { main : String
+    , description : String
+    }
+
+
+type alias ForecastResponse =
+    { weatherAttributes : List WeatherAttribute
+    , temperature : Float
+    }
 
 
 type Effect
@@ -120,12 +134,14 @@ type alias Model =
     , query : Maybe Query
     , locationsResponse : WebData (List String)
     , forecastResponse : WebData ()
+    , filter : String
     }
 
 
 type Msg
     = ReceivedForecastResponse (Result Http.Error ())
     | ReceivedLocationsResponse (Result Http.Error (List String))
+    | FilterChanged String
     | LocationClicked String
 
 
@@ -150,6 +166,20 @@ urlDecoder =
             )
 
 
+cardView : Html Msg -> Html Msg
+cardView =
+    List.singleton
+        >> Html.div
+            [ Attr.css
+                [ Css.backgroundColor theme.bodyForeground
+                , Css.color theme.bodyForeground
+                , Css.padding (Css.px 20)
+                , Css.borderRadius (Css.px 10)
+                , Css.margin2 (Css.px 20) (Css.px 0)
+                ]
+            ]
+
+
 loadingView : Html Msg
 loadingView =
     Html.text "Loading..."
@@ -163,11 +193,50 @@ readyView locations model =
             [ Attr.css
                 [ Css.displayFlex
                 , Css.flexDirection Css.column
+                , Css.alignItems Css.center
+                ]
+            ]
+            [ cardView <| weatherView model
+            , cardView <|
+                Html.div
+                    []
+                    [ TextInput.textInputView
+                        { value = model.filter
+                        , id = "filter-input"
+                        , label = "Search Cities"
+                        , onInput = FilterChanged
+                        }
+                    ]
+            ]
+        , Html.div
+            [ Attr.css
+                [ Css.displayFlex
+                , Css.flexDirection Css.column
+                , Css.justifyContent Css.center
                 ]
             ]
           <|
-            List.map locationLink locations
+            (locations
+                |> List.filter (String.toUpper >> String.contains (String.toUpper model.filter))
+                |> List.map (locationLink model)
+            )
         ]
+
+
+weatherView : Model -> Html Msg
+weatherView model =
+    case model.forecastResponse of
+        Loading ->
+            loadingView
+
+        Failure error ->
+            errorView error
+
+        Success () ->
+            Html.text "Weather"
+
+        NotAsked ->
+            Html.text "No Location Selected"
 
 
 errorView : Http.Error -> Html Msg
@@ -178,31 +247,54 @@ errorView =
             [ Html.text "There was an application error" ]
 
 
-locationLink : String -> Html Msg
-locationLink location =
+locationLink : Model -> String -> Html Msg
+locationLink model location =
     Html.a
         [ Attr.href <| "?city=" ++ location
+        , Attr.css
+            [ Css.color theme.primaryActionFont
+            , Css.fontWeight Css.lighter
+            , Css.fontSize (Css.px 20)
+            , Css.letterSpacing (Css.px 1.5)
+            , Css.display Css.inlineBlock
+            , Css.padding2 (Css.px 16) (Css.px 8)
+            , Css.textDecoration Css.none
+            , Css.alignSelf Css.center
+            , Css.hover
+                [ Css.textDecoration Css.underline
+                ]
+            ]
         , Events.preventDefaultOn
             "click"
             (Decode.succeed ( LocationClicked location, True ))
         ]
-        [ Html.text location ]
+        (getOptionText location model.filter)
 
 
 view : Model -> Html Msg
 view model =
-    case model.locationsResponse of
-        Loading ->
-            loadingView
+    Html.div
+        [ Attr.css
+            [ Css.color theme.bodyFont
+            , Css.backgroundColor theme.bodyBackground
+            , Css.height (Css.vh 100)
+            , Css.width (Css.vw 100)
+            , Css.overflow Css.auto
+            ]
+        ]
+        [ case model.locationsResponse of
+            Loading ->
+                loadingView
 
-        Success locations ->
-            readyView locations model
+            Success locations ->
+                readyView locations model
 
-        Failure err ->
-            errorView err
+            Failure err ->
+                errorView err
 
-        NotAsked ->
-            Html.text "There was a fatal application error, oh no"
+            NotAsked ->
+                Html.text "There was a fatal application error, oh no"
+        ]
 
 
 init : Flags -> ( Model, Effect )
@@ -214,6 +306,7 @@ init flags =
     in
     ( { flags = flags
       , query = query
+      , filter = ""
       , locationsResponse = Loading
       , forecastResponse =
             if MaybeX.isJust query then
@@ -237,11 +330,18 @@ init flags =
 update : Msg -> Model -> ( Model, Effect )
 update msg model =
     case msg of
+        FilterChanged filter ->
+            ( { model | filter = filter }
+            , EffectNone
+            )
+
         LocationClicked city ->
             let
+                url : Url
                 url =
                     model.flags.url
 
+                nextUrl : Url
                 nextUrl =
                     { url
                         | query = Just <| "city=" ++ city
@@ -299,3 +399,67 @@ main =
                     |> Result.map (Tuple.mapFirst Ok >> Tuple.mapSecond perform)
                     |> Result.withDefault ( result, Cmd.none )
         }
+
+
+type alias StringGetter msg =
+    { workingWordList : List (Html msg)
+    , currentString : String
+    }
+
+
+getOptionText : String -> String -> List (Html msg)
+getOptionText optionLabel searchValue =
+    List.foldl
+        (getOptionTextHelper searchValue)
+        { workingWordList = []
+        , currentString = ""
+        }
+        (String.split "" optionLabel)
+        |> (\result ->
+                result.workingWordList ++ [ Html.span [] [ Html.text result.currentString ] ]
+           )
+
+
+getOptionTextHelper : String -> String -> StringGetter msg -> StringGetter msg
+getOptionTextHelper matcher letter stringGetter =
+    let
+        nextString =
+            stringGetter.currentString ++ letter
+
+        index =
+            List.head (String.indices (String.toUpper matcher) (String.toUpper nextString))
+
+        found =
+            Maybe.withDefault False <| Maybe.map (\_ -> True) index
+
+        rightPart =
+            Maybe.map
+                (\i ->
+                    Html.b
+                        [ Attr.css
+                            [ Css.color theme.primaryActionBackground
+                            ]
+                        ]
+                        [ Html.text <| String.dropLeft i nextString ]
+                )
+                index
+
+        leftPart =
+            Maybe.map
+                (\i -> Html.span [] [ Html.text <| String.left i nextString ])
+                index
+    in
+    { stringGetter
+        | workingWordList =
+            Maybe.withDefault stringGetter.workingWordList <|
+                Maybe.map2
+                    (\l r -> stringGetter.workingWordList ++ [ l, r ])
+                    leftPart
+                    rightPart
+        , currentString =
+            if found then
+                ""
+
+            else
+                nextString
+    }

@@ -29,6 +29,9 @@ dependencies:
 - hedis
 - http-conduit
 - text
+- wai
+- warp
+- wai-middleware-static
 
 ghc-options:
 - -Wall
@@ -50,6 +53,7 @@ library:
   - DeriveFunctor
   - OverloadedRecordDot
   - DuplicateRecordFields
+  - NoFieldSelectors
 
 executables:
   app-exe:

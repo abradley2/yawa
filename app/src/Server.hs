@@ -9,13 +9,29 @@ import Handler (Env (..))
 import Handler qualified
 import Handler.Forecast qualified as Forecast
 import Handler.Locations qualified as Locations
+import Network.Wai (Application, Middleware)
+import Network.Wai.Handler.Warp (run)
+import Network.Wai.Middleware.Static (Policy)
+import Network.Wai.Middleware.Static qualified as Static
 import Relude
 import System.Environment qualified as Environment
 import Web.Scotty (ScottyM)
 import Web.Scotty qualified as Scotty
 
+staticMiddleware :: Middleware
+staticMiddleware =
+    Static.staticPolicy $
+        serveClient <> Static.addBase "public" <> Static.noDots <> Static.addBase "../client"
+
+serveClient :: Policy
+serveClient = Static.policy defaultIndex
+  where
+    defaultIndex "" = Just "index.html"
+    defaultIndex s = Just s
+
 handler :: Env -> ScottyM ()
 handler env = do
+    Scotty.middleware staticMiddleware
     Scotty.get "/locations" $
         Handler.runHandler
             env

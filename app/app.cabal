@@ -40,6 +40,7 @@ library
       DeriveFunctor
       OverloadedRecordDot
       DuplicateRecordFields
+      NoFieldSelectors
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       aeson
@@ -51,6 +52,9 @@ library
     , relude
     , scotty
     , text
+    , wai
+    , wai-middleware-static
+    , warp
   default-language: Haskell2010
 
 executable app-exe
@@ -71,6 +75,9 @@ executable app-exe
     , relude
     , scotty
     , text
+    , wai
+    , wai-middleware-static
+    , warp
   default-language: Haskell2010
 
 test-suite app-test
@@ -92,4 +99,7 @@ test-suite app-test
     , relude
     , scotty
     , text
+    , wai
+    , wai-middleware-static
+    , warp
   default-language: Haskell2010

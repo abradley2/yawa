@@ -1,4 +1,4 @@
-module Handler.Forecast (runEffects, onError, getForecast, handleGetForecast, LatLon (..)) where
+module Handler.Forecast (Effect (..), runEffects, onError, getForecast, handleGetForecast, LatLon (..)) where
 
 import Control.Monad.Free (Free (..), liftF)
 import Data.Aeson (FromJSON, ToJSON, (.:), (.=))
@@ -46,8 +46,8 @@ data Effect next
     deriving (Functor)
 
 runEffects :: (Free Effect) action -> ActionT LazyText (ReaderT Env IO) action
-runEffects (Pure _) =
-    error "Incorrect termination"
+runEffects (Pure done) =
+    pure done
 runEffects (Free (GetCityParam next)) = do
     city <- ScottyT.param "city"
     runEffects . next $ city
@@ -106,7 +106,7 @@ runEffects (Free (WriteCache latLon forecast next)) = do
 onError :: Error -> (Free Effect) ()
 onError (Error status message) = liftF (SendResponse status (Aeson.encode message) ())
 
-handleGetForecast :: ReaderT Env (ExceptT Error (Free Effect)) ()
+handleGetForecast :: ExceptT Error (Free Effect) ()
 handleGetForecast = do
     city <- liftEffect (GetCityParam id)
 

@@ -89,6 +89,14 @@ test-suite app-test
       Paths_app
   hs-source-dirs:
       test
+  default-extensions:
+      ImportQualifiedPost
+      OverloadedStrings
+      NoImplicitPrelude
+      DeriveFunctor
+      OverloadedRecordDot
+      DuplicateRecordFields
+      NoFieldSelectors
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       aeson

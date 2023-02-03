@@ -77,3 +77,11 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - app
+    default-extensions:
+    - ImportQualifiedPost
+    - OverloadedStrings
+    - NoImplicitPrelude
+    - DeriveFunctor
+    - OverloadedRecordDot
+    - DuplicateRecordFields
+    - NoFieldSelectors

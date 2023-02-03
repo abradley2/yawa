@@ -35,13 +35,11 @@ handler :: ScottyT LazyText (ReaderT Env IO) ()
 handler = do
     ScottyT.middleware staticMiddleware
 
-    ScottyT.get "/locations" $ do
-        env <- ask
-        Handler.runHandler env Locations.getLocations
+    ScottyT.get "/locations" $ 
+        Handler.runHandler Locations.getLocations
 
-    ScottyT.get "/locations/:city/weather" $ do
-        env <- ask
-        Handler.runHandler env Forecast.getForecast
+    ScottyT.get "/locations/:city/weather" $ 
+        Handler.runHandler Forecast.getForecast
 
 server :: IO ()
 server = do

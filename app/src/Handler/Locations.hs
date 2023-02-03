@@ -23,8 +23,8 @@ data Effect next
 data Error = Error Status Text
 
 runEffects :: (Free Effect) action -> ActionT LazyText (ReaderT Env IO) action
-runEffects (Pure _) =
-    error "Incorrect termination"
+runEffects (Pure done) =
+    pure done
 runEffects (Free (SendResponse status response next)) = do
     ScottyT.setHeader "Content-Type" "application/json"
     ScottyT.status status
@@ -44,7 +44,7 @@ onError (Error status err) =
     liftF $
         SendResponse status (ByteString.Lazy.fromStrict $ Text.Encoding.encodeUtf8 err) ()
 
-handleGetLocations :: ReaderT Env (ExceptT Error (Free Effect)) ()
+handleGetLocations :: ExceptT Error (Free Effect) ()
 handleGetLocations = do
     locationsRaw <- liftEffect (QueryLocations id) >>= liftEither
 

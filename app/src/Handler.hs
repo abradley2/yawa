@@ -15,20 +15,19 @@ type LazyText = Data.Text.Lazy.Text
 data Env = Env {apiKey :: Text, redisConn :: Redis.Connection}
 
 data Handler effect error action = Handler
-    { handle :: ReaderT Env (ExceptT error (Free effect)) action
+    { handle :: ExceptT error (Free effect) action
     , onError :: error -> (Free effect) action
     , runEffects :: (Free effect) action -> ActionT LazyText (ReaderT Env IO) action
     }
 
-liftEffect :: Functor effect => effect action -> ReaderT Env (ExceptT error (Free effect)) action
-liftEffect = lift . ExceptT . fmap Right . Free.liftF
+liftEffect :: Functor effect => effect action -> ExceptT error (Free effect) action
+liftEffect = ExceptT . fmap Right . Free.liftF
 
-liftEither :: Functor effect => Either error action -> ReaderT Env (ExceptT error (Free effect)) action
-liftEither = lift . Except.except
+liftEither :: Functor effect => Either error action -> ExceptT error (Free effect) action
+liftEither = Except.except
 
-runHandler :: Functor effect => Env -> Handler effect error action -> ActionT LazyText (ReaderT Env IO) action
-runHandler env handler =
-    runReaderT handler.handle env
-        & runExceptT
+runHandler :: Functor effect => Handler effect error action -> ActionT LazyText (ReaderT Env IO) action
+runHandler handler =
+    runExceptT handler.handle
         & (>>= either handler.onError pure)
         & handler.runEffects

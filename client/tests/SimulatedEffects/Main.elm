@@ -14,7 +14,7 @@ perform effect =
         Main.EffectFetchLocations ->
             SimulatedEffect.Cmd.none
 
-        Main.EffectSearch _ ->
+        Main.EffectGetForecast _ ->
             SimulatedEffect.Cmd.none
 
         Main.EffectReplaceUrl _ ->

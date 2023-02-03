@@ -9,7 +9,7 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text.Encoding
 import Data.Text.Lazy qualified
 import Database.Redis qualified as Redis
-import Handler (Env (..), Handler (..), liftEffect, liftEither)
+import Handler (ActionHandler, Env (..), Handler (..), liftEffect, liftEither)
 import Network.HTTP.Simple qualified as HTTP
 import Network.HTTP.Types.Status (Status)
 import Network.HTTP.Types.Status qualified as Status
@@ -127,7 +127,7 @@ handleGetForecast = do
     decodeLatLon :: ByteString -> Either Error LatLon
     decodeLatLon = first (Error Status.status500 . Text.pack) . Aeson.eitherDecodeStrict
 
-getForecast :: Handler Effect Error ()
+getForecast :: ActionHandler Effect Error ()
 getForecast =
     Handler
         { handle = handleGetForecast

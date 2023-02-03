@@ -6,7 +6,7 @@ import Data.ByteString.Lazy qualified as ByteString.Lazy
 import Data.Text.Encoding qualified as Text.Encoding
 import Data.Text.Lazy qualified
 import Database.Redis qualified as Redis
-import Handler (Env (..), Handler (..), liftEffect, liftEither)
+import Handler (ActionHandler, Env (..), Handler (..), liftEffect, liftEither)
 import Network.HTTP.Types.Status (Status)
 import Network.HTTP.Types.Status qualified as Status
 import Relude
@@ -50,7 +50,7 @@ handleGetLocations = do
 
     liftEffect $ SendResponse Status.status200 locationsRaw ()
 
-getLocations :: Handler Effect Error ()
+getLocations :: ActionHandler Effect Error ()
 getLocations =
     Handler
         { handle = handleGetLocations

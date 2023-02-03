@@ -4,6 +4,7 @@ import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy qualified as LBS
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text.Encoding
+import Data.Text.Lazy qualified
 import Database.Redis qualified as Redis
 import Handler (Env (..))
 import Handler qualified
@@ -14,8 +15,10 @@ import Network.Wai.Middleware.Static (Policy)
 import Network.Wai.Middleware.Static qualified as Static
 import Relude
 import System.Environment qualified as Environment
-import Web.Scotty (ScottyM)
-import Web.Scotty qualified as Scotty
+import Web.Scotty.Trans (ScottyT)
+import Web.Scotty.Trans qualified as ScottyT
+
+type LazyText = Data.Text.Lazy.Text
 
 staticMiddleware :: Middleware
 staticMiddleware =
@@ -28,29 +31,25 @@ serveClient = Static.policy defaultIndex
     defaultIndex "" = Just "index.html"
     defaultIndex s = Just s
 
-handler :: Env -> ScottyM ()
-handler env = do
-    Scotty.middleware staticMiddleware
-    Scotty.get "/locations" $
-        Handler.runHandler
-            env
-            Locations.getLocations
-            Locations.perform
+handler :: ScottyT LazyText (ReaderT Env IO) ()
+handler = do
+    ScottyT.middleware staticMiddleware
 
-    Scotty.get "/locations/:city/weather" $ do
-        city <- Scotty.param "city"
-        Handler.runHandler
-            env
-            (Forecast.getForecast city)
-            Forecast.perform
-    pure ()
+    ScottyT.get "/locations" $ do
+        env <- ask
+        Handler.runHandler env Locations.getLocations
+
+    ScottyT.get "/locations/:city/weather" $ do
+        env <- ask
+        Handler.runHandler env Forecast.getForecast
 
 server :: IO ()
 server = do
     redisConn <- Redis.connect Redis.defaultConnectInfo
     runSeedData redisConn
     apiKey <- getEnv "API_KEY"
-    Scotty.scotty 9966 $ handler (Env{apiKey = apiKey, redisConn = redisConn})
+    let env = Env{apiKey = apiKey, redisConn = redisConn}
+    ScottyT.scottyT 9966 (`runReaderT` env) handler
 
 runSeedData :: Redis.Connection -> IO ()
 runSeedData redisConn = do

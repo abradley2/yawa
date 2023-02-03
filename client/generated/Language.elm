@@ -13,7 +13,7 @@ defaultLanguage =
         [ ( ""
           , I18Next.object
                 [ ( "temperatureDescription"
-                  , I18Next.string "Temperature in -> {{location}}"
+                  , I18Next.string "Here is the Temperature in {{location}}"
                   )
                 ]
           )

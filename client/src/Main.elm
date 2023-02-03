@@ -53,7 +53,7 @@ type Effect
     = EffectNone
     | EffectBatch (List Effect)
     | EffectFetchLocations
-    | EffectSearch Query
+    | EffectGetForecast Query
     | EffectReplaceUrl String
 
 
@@ -89,7 +89,7 @@ perform effect =
                 , url = Url.Builder.absolute [ "locations" ] []
                 }
 
-        EffectSearch (QueryCity city) ->
+        EffectGetForecast (QueryCity city) ->
             Http.request
                 { method = "GET"
                 , body = Http.emptyBody
@@ -100,7 +100,7 @@ perform effect =
                 , url = Url.Builder.absolute [ "locations", city, "weather" ] []
                 }
 
-        EffectSearch (QueryLatLng lat lng) ->
+        EffectGetForecast (QueryLatLng lat lng) ->
             Http.request
                 { method = "GET"
                 , body = Http.emptyBody
@@ -366,7 +366,7 @@ init flags =
     , EffectBatch
         [ case query of
             Just searchParams ->
-                EffectSearch searchParams
+                EffectGetForecast searchParams
 
             Nothing ->
                 EffectNone
@@ -397,7 +397,7 @@ update msg model =
             in
             ( { model | forecastResponse = Loading }
             , EffectBatch
-                [ EffectSearch (QueryCity city)
+                [ EffectGetForecast (QueryCity city)
                 , EffectReplaceUrl (Url.toString nextUrl)
                 ]
             )

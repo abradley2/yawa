@@ -1,22 +1,27 @@
-module Handler.Forecast (perform, Effect (..), getForecast, LatLon (..)) where
+module Handler.Forecast (runEffects, onError, getForecast, handleGetForecast, LatLon (..)) where
 
 import Control.Monad.Free (Free (..), liftF)
-import Control.Monad.Trans.Except (except)
 import Data.Aeson (FromJSON, ToJSON, (.:), (.=))
 import Data.Aeson qualified as Aeson
-import Data.ByteString.Lazy qualified as LBS
+import Data.ByteString.Lazy (LazyByteString)
+import Data.ByteString.Lazy qualified as ByteString.Lazy
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text.Encoding
+import Data.Text.Lazy qualified
 import Database.Redis qualified as Redis
-import Handler (Env (..), HandlerM)
+import Handler (Env (..), Handler (..), liftEffect, liftEither)
 import Network.HTTP.Simple qualified as HTTP
 import Network.HTTP.Types.Status (Status)
 import Network.HTTP.Types.Status qualified as Status
 import Relude
-import Web.Scotty (ActionM)
-import Web.Scotty qualified as Scotty
+import Web.Scotty.Trans (ActionT)
+import Web.Scotty.Trans qualified as ScottyT
+
+type LazyText = Data.Text.Lazy.Text
 
 data LatLon = LatLon {lat :: Float, lon :: Float}
+
+data Error = Error Status Text
 
 latLonKey :: LatLon -> ByteString
 latLonKey (LatLon lat lon) =
@@ -32,49 +37,50 @@ instance FromJSON LatLon where
             <*> (o .: "lon")
 
 data Effect next
-    = SendResponse Status LBS.ByteString next
-    | CheckCache Env LatLon (Maybe LBS.ByteString -> next)
-    | QueryForecast Env LatLon (LBS.ByteString -> next)
-    | QueryCity Env Text (Either String LatLon -> next)
-    | WriteCache Env LatLon LBS.ByteString next
+    = SendResponse Status LazyByteString next
+    | GetCityParam (Text -> next)
+    | CheckCache LatLon (Either Error (Maybe LazyByteString) -> next)
+    | QueryForecast LatLon (LazyByteString -> next)
+    | QueryLatLon Text (Either Error ByteString -> next)
+    | WriteCache LatLon LazyByteString next
     deriving (Functor)
 
-perform :: (Free Effect) action -> ActionM action
-perform (Pure a) = pure a
-perform (Free (QueryCity env city next)) = do
+runEffects :: (Free Effect) action -> ActionT LazyText (ReaderT Env IO) action
+runEffects (Pure _) =
+    error "Incorrect termination"
+runEffects (Free (GetCityParam next)) = do
+    city <- ScottyT.param "city"
+    runEffects . next $ city
+runEffects (Free (QueryLatLon city next)) = do
+    env <- ask
+
     result <-
-        runExceptT
-            ( do
-                let redisConn = env.redisConn
-                redisResult <-
-                    ExceptT . liftIO $
-                        Redis.runRedis redisConn $
-                            first show <$> Redis.get (Text.Encoding.encodeUtf8 city)
+        liftIO . Redis.runRedis env.redisConn $
+            Redis.get (Text.Encoding.encodeUtf8 city)
 
-                redisBS <-
-                    except $
-                        maybe (Left ("City not found" :: String)) Right redisResult
-
-                let parseLatLon :: ByteString -> Either String LatLon
-                    parseLatLon = Aeson.eitherDecodeStrict
-
-                except $ parseLatLon redisBS
-            )
-    perform $ next result
-perform (Free (SendResponse status response next)) = do
-    Scotty.setHeader "Content-Type" "application/json"
-    Scotty.status status
-    Scotty.raw response
-    perform next
-perform (Free (CheckCache env latLon next)) = do
-    let redisConn = env.redisConn
+    runEffects . next $ case result of
+        Left redisErr ->
+            Left $ Error Status.status500 (show redisErr)
+        Right (Just latLonRaw) ->
+            Right latLonRaw
+        Right Nothing ->
+            Left $ Error Status.status404 "City not found"
+runEffects (Free (SendResponse status response next)) = do
+    ScottyT.setHeader "Content-Type" "application/json"
+    ScottyT.status status
+    ScottyT.raw response
+    runEffects next
+runEffects (Free (CheckCache latLon next)) = do
+    env <- ask
     result <-
-        lift . Redis.runRedis redisConn $
+        liftIO . Redis.runRedis env.redisConn $
             Redis.get (latLonKey latLon)
-    case result of
-        Right (Just forecast) -> perform (next $ Just $ LBS.fromStrict forecast)
-        _ -> perform (next Nothing)
-perform (Free (QueryForecast env latLon next)) = do
+    runEffects . next $ case result of
+        Right (Just forecast) -> Right . Just $ ByteString.Lazy.fromStrict forecast
+        Right Nothing -> Right Nothing
+        Left redisErr -> Left $ Error Status.status500 (show redisErr)
+runEffects (Free (QueryForecast latLon next)) = do
+    env <- ask
     req <-
         HTTP.parseRequest
             ( mconcat
@@ -89,45 +95,42 @@ perform (Free (QueryForecast env latLon next)) = do
                 ]
             )
     res <- HTTP.httpLBS req
-    perform (next $ HTTP.getResponseBody res)
-perform (Free (WriteCache env latLon forecast next)) = do
-    let redisConn = env.redisConn
-    _ <-
-        lift . Redis.runRedis redisConn $
-            Redis.set (latLonKey latLon) (LBS.toStrict forecast)
-    perform next
-
-sendResponse :: Status -> LBS.ByteString -> Free Effect ()
-sendResponse status response = liftF $ SendResponse status response ()
-
-checkCache :: Env -> LatLon -> Free Effect (Maybe LBS.ByteString)
-checkCache env latLon = liftF $ CheckCache env latLon id
-
-queryForecast :: Env -> LatLon -> Free Effect LBS.ByteString
-queryForecast env latLon = liftF $ QueryForecast env latLon id
-
-writeCache :: Env -> LatLon -> LBS.ByteString -> Free Effect ()
-writeCache env latLon forecast = liftF $ WriteCache env latLon forecast ()
-
-queryCity :: Env -> Text -> Free Effect (Either String LatLon)
-queryCity env city = liftF $ QueryCity env city id
-
-getForecast :: Text -> HandlerM Effect Text ()
-getForecast city = do
+    runEffects (next $ HTTP.getResponseBody res)
+runEffects (Free (WriteCache latLon forecast next)) = do
     env <- ask
-    latLonResult <- lift $ queryCity env city
-    case latLonResult of
-        Right latLon -> do
-            cacheHit <- lift $ checkCache env latLon
-            case cacheHit of
-                Just forecast -> do
-                    lift $ sendResponse Status.status200 forecast
-                Nothing -> do
-                    forecast <- lift $ queryForecast env latLon
-                    lift $ writeCache env latLon forecast
-                    lift $ sendResponse Status.status200 forecast
-        Left err -> do
-            lift $
-                sendResponse
-                    Status.status404
-                    (LBS.fromStrict $ Text.Encoding.encodeUtf8 $ Text.pack err)
+    _ <-
+        liftIO . Redis.runRedis env.redisConn $
+            Redis.set (latLonKey latLon) (ByteString.Lazy.toStrict forecast)
+    runEffects next
+
+onError :: Error -> (Free Effect) ()
+onError (Error status message) = liftF (SendResponse status (Aeson.encode message) ())
+
+handleGetForecast :: ReaderT Env (ExceptT Error (Free Effect)) ()
+handleGetForecast = do
+    city <- liftEffect (GetCityParam id)
+
+    latLonRaw <- liftEffect (QueryLatLon city id) >>= liftEither
+
+    latLon <- liftEither $ decodeLatLon latLonRaw
+
+    cachedForecast <- liftEffect (CheckCache latLon id) >>= liftEither
+
+    case cachedForecast of
+        Just forecast ->
+            liftEffect (SendResponse Status.status200 forecast ())
+        Nothing -> do
+            forecast <- liftEffect (QueryForecast latLon id)
+            liftEffect (WriteCache latLon forecast ())
+            liftEffect (SendResponse Status.status200 forecast ())
+  where
+    decodeLatLon :: ByteString -> Either Error LatLon
+    decodeLatLon = first (Error Status.status500 . Text.pack) . Aeson.eitherDecodeStrict
+
+getForecast :: Handler Effect Error ()
+getForecast =
+    Handler
+        { handle = handleGetForecast
+        , onError = onError
+        , runEffects = runEffects
+        }

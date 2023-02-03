@@ -1,49 +1,59 @@
-module Handler.Locations (getLocations, perform) where
+module Handler.Locations (getLocations, runEffects) where
 
 import Control.Monad.Free (Free (..), liftF)
-import Data.ByteString.Lazy qualified as LBS
+import Data.ByteString.Lazy (LazyByteString)
+import Data.ByteString.Lazy qualified as ByteString.Lazy
+import Data.Text.Encoding qualified as Text.Encoding
+import Data.Text.Lazy qualified
 import Database.Redis qualified as Redis
-import Handler (Env (..), HandlerM)
+import Handler (Env (..), Handler (..), liftEffect, liftEither)
 import Network.HTTP.Types.Status (Status)
 import Network.HTTP.Types.Status qualified as Status
 import Relude
-import Web.Scotty (ActionM)
-import Web.Scotty qualified as Scotty
+import Web.Scotty.Internal.Types (ActionT)
+import Web.Scotty.Trans qualified as ScottyT
+
+type LazyText = Data.Text.Lazy.Text
 
 data Effect next
-    = QueryLocations Env (Maybe LBS.ByteString -> next)
-    | SendResponse Status LBS.ByteString next
+    = QueryLocations (Either Error LazyByteString -> next)
+    | SendResponse Status LazyByteString next
     deriving (Functor)
 
-perform :: (Free Effect) action -> ActionM action
-perform (Pure a) = pure a
-perform (Free (SendResponse status response next)) = do
-    Scotty.setHeader "Content-Type" "application/json"
-    Scotty.status status
-    Scotty.raw response
-    perform next
-perform (Free (QueryLocations env next)) = do
-    let redisConn = env.redisConn
-    results <-
-        lift . Redis.runRedis redisConn $
-            Redis.get "cities"
+data Error = Error Status Text
+
+runEffects :: (Free Effect) action -> ActionT LazyText (ReaderT Env IO) action
+runEffects (Pure _) =
+    error "Incorrect termination"
+runEffects (Free (SendResponse status response next)) = do
+    ScottyT.setHeader "Content-Type" "application/json"
+    ScottyT.status status
+    ScottyT.raw response
+    runEffects next
+runEffects (Free (QueryLocations next)) = do
+    env <- ask
+    results <- liftIO $ Redis.runRedis env.redisConn $ Redis.get "cities"
 
     case results of
-        Right (Just cities) -> perform $ next (Just $ LBS.fromStrict cities)
-        _ -> perform $ next Nothing
+        Right (Just cities) -> runEffects $ next (Right $ ByteString.Lazy.fromStrict cities)
+        Right Nothing -> runEffects $ next (Left $ Error Status.status404 "No cities found")
+        Left redisErr -> runEffects $ next (Left $ Error Status.status500 (show redisErr))
 
-queryLocations :: Env -> Free Effect (Maybe LBS.ByteString)
-queryLocations env = liftF $ QueryLocations env id
+onError :: Error -> (Free Effect) ()
+onError (Error status err) =
+    liftF $
+        SendResponse status (ByteString.Lazy.fromStrict $ Text.Encoding.encodeUtf8 err) ()
 
-sendResponse :: Status -> LBS.ByteString -> Free Effect ()
-sendResponse status response = liftF $ SendResponse status response ()
+handleGetLocations :: ReaderT Env (ExceptT Error (Free Effect)) ()
+handleGetLocations = do
+    locationsRaw <- liftEffect (QueryLocations id) >>= liftEither
 
-getLocations :: HandlerM Effect Text ()
-getLocations = do
-    env <- ask
-    locations <- lift $ queryLocations env
-    lift $
-        maybe
-            (sendResponse Status.status404 mempty)
-            (sendResponse Status.status200)
-            locations
+    liftEffect $ SendResponse Status.status200 locationsRaw ()
+
+getLocations :: Handler Effect Error ()
+getLocations =
+    Handler
+        { handle = handleGetLocations
+        , onError = onError
+        , runEffects = runEffects
+        }
